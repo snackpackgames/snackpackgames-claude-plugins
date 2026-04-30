@@ -1,0 +1,19 @@
+{
+  "name": "snackpackgames",
+  "owner": {
+    "name": "Snack Pack Games"
+  },
+  "metadata": {
+    "description": "Claude Code skills for Godot 4, Nakama, and Hiro"
+  },
+  "plugins": [
+    {
+      "name": "snackpackgames-claude-plugins",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/snackpackgames/snackpackgames-claude-plugins.git"
+      },
+      "description": "Godot 4 skills (gameplay, physics, UI, multiplayer), Nakama backend, and Hiro framework"
+    }
+  ]
+}

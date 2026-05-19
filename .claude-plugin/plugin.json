@@ -1,0 +1,8 @@
+{
+  "name": "snackpackgames-claude-plugins",
+  "version": "1.0.0",
+  "description": "Godot 4 skills (gameplay, physics, UI, multiplayer), Nakama backend, and Hiro framework",
+  "author": {
+    "name": "Snack Pack Games"
+  }
+}

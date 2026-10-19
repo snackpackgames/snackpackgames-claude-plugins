@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fetches the latest SKILL.md and scripts/ for every sourced skill from
+# Fetches the latest SKILL.md, scripts/, and references/ for every sourced skill from
 # thedivergentai/gd-agentic-skills. Requires `gh` CLI authenticated.
 # Usage: bash scripts/update-skills.sh
 # After running, review with: git diff
@@ -52,30 +52,48 @@ SOURCED_SKILLS=(
   godot-ui-theming
 )
 
+# Fetches one flat subdirectory (scripts/, references/) if it exists upstream.
+# Clears the local copy first so files renamed or dropped upstream don't linger.
+fetch_subdir() {
+  local skill="$1"
+  local subdir="$2"
+  local dest="$SKILLS_DIR/$skill/$subdir"
+
+  local entries
+  entries=$(gh api "repos/$REPO/contents/skills/$skill/$subdir" \
+    --jq '.[] | select(.type == "file") | .name' 2>/dev/null || true)
+
+  [ -z "$entries" ] && return 0
+
+  mkdir -p "$dest"
+  find "$dest" -maxdepth 1 -type f -delete
+
+  while IFS= read -r entry; do
+    gh api "repos/$REPO/contents/skills/$skill/$subdir/$entry" \
+      --jq '.content' | base64 -d > "$dest/$entry"
+  done <<< "$entries"
+}
+
 fetch_skill() {
   local skill="$1"
   local dest="$SKILLS_DIR/$skill"
   echo "  updating $skill..."
   mkdir -p "$dest"
 
-  # Fetch SKILL.md
-  gh api "repos/$REPO/contents/skills/$skill/SKILL.md" --jq '.content' \
-    | base64 -d > "$dest/SKILL.md"
-
-  # Fetch scripts/ if the directory exists
-  local scripts
-  scripts=$(gh api "repos/$REPO/contents/skills/$skill/scripts" \
-    --jq '.[].name' 2>/dev/null || true)
-
-  if [ -n "$scripts" ]; then
-    mkdir -p "$dest/scripts"
-    # Remove stale .gd files so renamed scripts don't linger
-    rm -f "$dest/scripts/"*.gd
-    while IFS= read -r script_file; do
-      gh api "repos/$REPO/contents/skills/$skill/scripts/$script_file" \
-        --jq '.content' | base64 -d > "$dest/scripts/$script_file"
-    done <<< "$scripts"
+  # Fetch SKILL.md through a temp file so a failed request can't truncate the
+  # existing skill to zero bytes.
+  local staged
+  staged=$(mktemp)
+  if ! gh api "repos/$REPO/contents/skills/$skill/SKILL.md" --jq '.content' \
+    | base64 -d > "$staged" || [ ! -s "$staged" ]; then
+    rm -f "$staged"
+    echo "    WARNING: could not fetch SKILL.md, leaving $skill unchanged" >&2
+    return 0
   fi
+  mv "$staged" "$dest/SKILL.md"
+
+  fetch_subdir "$skill" scripts
+  fetch_subdir "$skill" references
 }
 
 echo "Fetching ${#SOURCED_SKILLS[@]} skills from $REPO..."

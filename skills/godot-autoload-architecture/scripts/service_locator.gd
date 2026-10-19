@@ -1,28 +1,51 @@
-# skills/autoload-architecture/code/service_locator.gd
+# service_locator.gd
+# Expert Service Locator pattern using Godot 4.1+ static variables.
+# Decouples system discovery from hardcoded Autoloads.
+
 extends Node
 
-## Service Locator Expert Pattern
-## Registry gateway for decoupled system discovery and mocking.
+class_name ServiceLocator
 
-var _services = {}
+## Global registry of services, accessible via static methods.
+static var _services: Dictionary = {}
 
-func register_service(id: String, provider: Node) -> void:
-    # 1. Dynamic Registry
-    _services[id] = provider
-    print("Service Registered: ", id)
+## Registers a service provider (Node or RefCounted).
+static func register_service(id: String, provider: Object) -> void:
+	if _services.has(id):
+		push_warning("Service Locator: Overwriting existing service '%s'." % id)
+	_services[id] = provider
+	print("Service Locator: Registered '%s' (%s)" % [id, provider.get_class()])
 
-func get_service(id: String) -> Node:
-    # 2. Access Guard
-    if not _services.has(id):
-        push_error("Service not found: ", id)
-        return null
-    return _services[id]
+## Retrieves a registered service. Returns null if not found.
+static func get_service(id: String) -> Object:
+	if not _services.has(id):
+		push_error("Service Locator: Service '%s' not found!" % id)
+		return null
+	return _services[id]
 
-func unregister_service(id: String) -> void:
-    _services.erase(id)
+## Removes a service from the registry.
+static func unregister_service(id: String) -> void:
+	if _services.erase(id):
+		print("Service Locator: Unregistered '%s'" % id)
 
-## WHY THIS WAY?
-## Instead of calling 'AudioManager.play()', you call
-## 'ServiceLocator.get_service("audio").play()'. This allows you
-## to swap the 'AudioManager' for a 'MockAudioManager' during 
-## testing without changing a single line of game code.
+## Clears all services (useful for unit test teardown).
+static func clear_all() -> void:
+	_services.clear()
+	print("Service Locator: All services cleared.")
+
+## Usage Expert Tip:
+## Instead of using hardcoded Autoloads, have your managers register themselves:
+## func _ready():
+##     ServiceLocator.register_service("save_manager", self)
+# =============================================================================
+# GDSkills research links (agents) — does not affect runtime
+# Official docs:
+# - https://docs.godotengine.org/en/stable/classes/class_engine.html
+# - https://docs.godotengine.org/en/stable/tutorials/best_practices/autoloads_versus_regular_nodes.html
+# - https://docs.godotengine.org/en/stable/classes/class_refcounted.html
+# Related skills:
+# - https://github.com/thedivergentai/gd-agentic-skills/blob/main/skills/godot-composition/SKILL.md — register components without Node Autoload spam
+# - https://github.com/thedivergentai/gd-agentic-skills/blob/main/skills/godot-gdscript-mastery/SKILL.md — StringName keys / static helpers
+# - https://github.com/thedivergentai/gd-agentic-skills/blob/main/skills/godot-testing-patterns/SKILL.md — swap fakes via clear/register
+# Parent skill: https://github.com/thedivergentai/gd-agentic-skills/blob/main/skills/godot-autoload-architecture/SKILL.md
+# =============================================================================

@@ -136,3 +136,48 @@ Schema-compliant fixture builders.
 
 #### Master
 - [godot-master](https://github.com/thedivergentai/gd-agentic-skills/blob/main/skills/godot-master/SKILL.md) — library router and mirrored module entry for cross-skill discovery.
+
+<!-- snackpackgames:local -->
+
+## Snack Pack Games project patterns (Fiber)
+
+Project-owned notes, kept across `scripts/update-skills.sh` runs (everything below the marker above is preserved). Where they differ from the generic advice above, these win.
+
+### Cleanup: `autofree`, not `after_each`
+- Create nodes with `autofree(...)` / `add_child_autofree(...)` in `before_each` or the test itself. Don't hand-write `free()` / `queue_free()` in `after_each`.
+- Use `after_each` only to undo **global** state: autoload registrations, static overrides, `Engine.time_scale`, and similar.
+
+### Autoloads persist for the whole GUT process
+GUT runs many test files in one process (CI splits the suite into 8 such batches), so anything a test leaves on an autoload leaks into every later test in that batch.
+- **Test a fresh instance, not the global.** `autofree(load("res://debug/debug_console.gd").new())` then `add_child(...)`, instead of mutating `DebugConsole`.
+- **If you must use the real autoload, undo it in `after_each`.** Use `DefinitionRegistry.clear()`, `SaveManager.unregister(...)`, unregister commands, and so on.
+- **Disconnect what you connect.** A connection from an autoload or bus signal (`CombatBus`, `StatsBus`, …) to a test-owned object or lambda keeps it alive past the test. Prefer `watch_signals(obj)` + `assert_signal_emitted` over hand-wired lambdas. Disconnect in `after_each` if the receiver outlives the test.
+- **Autoloads clean up after themselves** in `_exit_tree()`: disconnect bus signals and free created children. See `network/network_manager.gd`. Otherwise GUT's exit reports them as leaked objects.
+- **Static vars outlive tests too.** Tuning resources use `set_override(...)`; always `set_override(null)` in `after_each`.
+
+### Watch what a `const preload` drags in
+- A `const X := preload("res://….tscn")` stays loaded until the process exits, along with all its sub-resources (collision shapes, textures).
+- Type hints load scripts, so a light class reached only through a `var foo: SomeType` hint still pulls in `SomeType`'s preloads.
+- Example: `DebugCommandContext.player_manager: PlayerManager` made every debug-command test load `player.tscn` via `PlayerManager`'s `const PLAYER_SCENE`. That pushed a CI batch's `P12GodotShape2D` RID leaks from 8 to 10 against a ceiling of 9.
+- Keep heavy scene preloads out of scripts that small classes reference by type. If a light data class needs a heavy class only for duck-typed calls, leave the field untyped and explain why in a comment.
+
+### CI leak check (`scripts/check_test_leaks.sh`)
+- CI fails a batch on leaks even when every test passes. Tolerances are `--tolerate-object-leaks=45` and `--tolerate-rid=P12GodotShape2D:9` (see `.github/workflows/godot-ci.yml`). Counts depend on which files share a batch.
+- Batch membership is `cksum(path) % 8` over `res://test/…` paths. A new test file only joins one batch and never moves others.
+- To triage, reproduce the failing batch locally with the same file list and `-v -d --headless`, then bisect by dropping files. Compare against the same batch on `main` before blaming the new code.
+- The leak hint text mentions autoloads generically. Check the actual leaked type before assuming it's an autoload.
+
+### Engine errors fail tests
+- GUT counts `push_error` / engine `ERROR:` lines raised during a test as **unexpected errors**, even when every assertion passes.
+- Don't write a test whose code path deliberately triggers a `push_error` (e.g. `Atlas.get_map_from_id` on a missing id) unless the test asserts that error is expected.
+
+### Local-only failures are environment bugs
+- A test that fails locally on `main` but passes in CI is not "pre-existing". Check `gh run list --workflow CI` first.
+- `ext_resource, invalid UID: … - using text path instead` means a stale local `.godot` editor cache. Run `bash scripts/check-uid-cache.sh --fix` (added in fiber#1262).
+- `scripts/config.sh` refuses a Godot whose major.minor differs from `scripts/godot_version.sh`.
+
+### GDScript lambda captures
+Lambdas copy locals at capture time. To collect results from a signal callback, capture an `Array` or `Dictionary` and append to it, not a plain variable.
+
+### Prefer real resources over hand-built doubles for data-driven code
+For `.tres`-driven systems (e.g. debug commands in `debug/commands/data/`), load the real `.tres` in the test. It covers the resource's configuration (scope, names) as well as the script's behavior.

@@ -86,6 +86,8 @@ git add -p && git commit -m "chore: update sourced skills from gd-agentic-skills
 git push
 ```
 
+To keep project-specific notes in a sourced skill, put them at the end of its `SKILL.md` below a line that reads exactly `<!-- snackpackgames:local -->`. `update-skills.sh` re-appends everything from that line down after fetching the upstream version. `godot-testing-patterns` uses this for Fiber's GUT patterns.
+
 To add a new skill from gd-agentic-skills:
 
 ```bash

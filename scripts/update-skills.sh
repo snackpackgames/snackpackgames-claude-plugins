@@ -9,6 +9,10 @@ set -euo pipefail
 REPO="thedivergentai/gd-agentic-skills"
 SKILLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/skills"
 
+# A sourced SKILL.md may end with our own project notes below this exact line;
+# fetch_skill keeps them when it replaces the rest with the upstream version.
+LOCAL_MARKER="<!-- snackpackgames:local -->"
+
 SOURCED_SKILLS=(
   godot-2d-animation
   godot-2d-physics
@@ -89,6 +93,13 @@ fetch_skill() {
     rm -f "$staged"
     echo "    WARNING: could not fetch SKILL.md, leaving $skill unchanged" >&2
     return 0
+  fi
+  # Carry our own project notes across the upstream refresh: everything from
+  # the LOCAL_MARKER line to the end of the existing SKILL.md is re-appended.
+  if [ -f "$dest/SKILL.md" ] && grep -qxF "$LOCAL_MARKER" "$dest/SKILL.md"; then
+    printf '\n' >> "$staged"
+    awk -v marker="$LOCAL_MARKER" 'found || $0 == marker { found = 1; print }' \
+      "$dest/SKILL.md" >> "$staged"
   fi
   mv "$staged" "$dest/SKILL.md"
 
